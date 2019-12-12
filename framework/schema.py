@@ -5,6 +5,8 @@ from django.utils import timezone
 from graphql_jwt.decorators import permission_required, login_required
 from django.contrib.auth.models import User
 from django.db.models import Avg
+from django.contrib.auth import get_user_model
+from graphene_django import DjangoObjectType
 
 import attendance.schema
 from college.schema import Query as collegeQuery
@@ -82,6 +84,33 @@ class UserObj(UserBasicObj, graphene.ObjectType):
             return None
 
 
+class UserType(DjangoObjectType):
+    class Meta:
+        model = get_user_model()
+        exclude = ('password',)
+
+
+class CreateUser(graphene.Mutation):
+    user = graphene.Field(UserType)
+
+    class Arguments:
+        username = graphene.String(required=True)
+        password = graphene.String(required=True)
+        email = graphene.String(required=True)
+
+    def mutate(self, info, username, password, email):
+        user = info.context.user
+        if user.is_superuser:
+            newUser = get_user_model()(
+                username=username,
+                email=email,
+            )
+            newUser.set_password(password)
+            newUser.save()
+
+            return CreateUser(user=newUser)
+
+
 class Query(
     dairyQuery,
     MembersQuery,
@@ -122,6 +151,7 @@ class Mutation(membersMutation, attendance.schema.Mutation, registrationMutation
     verify_token = graphql_jwt.Verify.Field()
     refresh_token = graphql_jwt.Refresh.Field()
     revoke_token = graphql_jwt.Revoke.Field()
+    create_user = CreateUser.Field()
 
 
 schema = graphene.Schema(query=Query, mutation=Mutation)
